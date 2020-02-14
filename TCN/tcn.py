@@ -2,7 +2,7 @@ from typing import List
 
 from tensorflow.keras import backend as K, Model, Input, optimizers
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Activation, SpatialDropout1D, Lambda
+from tensorflow.keras.layers import Activation, SpatialDropout1D, Lambda, Dropout
 from tensorflow.keras.layers import Layer, Conv1D, Dense, BatchNormalization, LayerNormalization
 
 
@@ -391,11 +391,14 @@ def compiled_tcn(num_feat,  # type: int
         model.compile(get_opt(), loss='sparse_categorical_crossentropy', metrics=[accuracy])
     else:
         # regression
+        x = Dense(256)(x)
+        x = Dropout(dropout_rate)(x)
+        x = Activation('relu')(x)
         x = Dense(output_len)(x)
         x = Activation('linear')(x)
         output_layer = x
         model = Model(input_layer, output_layer)
-        model.compile(get_opt(), loss='mean_squared_error')
+        model.compile(get_opt(), loss='mse', metrics=['mape'])
     print('model.x = {}'.format(input_layer.shape))
     print('model.y = {}'.format(output_layer.shape))
     return model
