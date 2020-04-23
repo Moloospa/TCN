@@ -1,0 +1,164 @@
+import pandas as pd
+import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+
+import plotly.graph_objects as go
+
+
+def load_data(filepath):
+    data = pd.read_csv(filepath_or_buffer=filepath, usecols=['open', 'high', 'low', 'close'],
+                       dtype='float32')
+
+    return data.to_numpy()
+
+# divide rows by open value
+def normalize_data(data):
+    n = data.shape[0]
+    normalize_data = np.divide(data, data[:, 0].reshape((n, 1)))
+    return normalize_data[:, 1:]
+
+def compute_relative_position(data):
+    n = data.shape[0]
+    midpoint = (data[:, 1] - data[:, 2]) / 2
+
+    relative_position = (midpoint - np.roll(midpoint, 1, axis=0)) / np.roll(midpoint, 1, axis=0)
+    return relative_position.reshape((n, 1))
+
+def construct_pattern(data) :
+    normalized_data = normalize_data(data)
+    relative_position = compute_relative_position(data)
+    return np.concatenate((np.roll(normalized_data, 2, axis=0), np.roll(normalized_data, 1, axis=0),
+                           normalized_data, np.roll(relative_position, 1, axis=0),
+                           relative_position), axis=1)
+
+def compute_moving_average(data, periods=3):
+    weights = np.ones(periods) / periods
+    ma = np.convolve(data[:, 3], weights, mode='same')
+    return np.roll(ma, 1, axis=0)
+
+
+def get_trend(data, lag=2):
+    n = data.shape[0]
+    ma = compute_moving_average(data)
+    up_trend = np.logical_and(ma > np.roll(ma, 1, axis=0), np.roll(ma, 1, axis=0) > np.roll(ma, 2, axis=0))
+    down_trend = np.logical_and(ma < np.roll(ma, 1, axis=0), np.roll(ma, 1, axis=0) < np.roll(ma, 2, axis=0))
+    condlist = [up_trend, down_trend]
+    choicelist = [1, -1]
+    trend = np.select(condlist, choicelist)
+    return np.roll(trend, lag, axis=0).reshape((n, 1))
+
+def get_tradability_status(data, look_ahead=1, threshold=0.005):
+    n = data.shape[0]
+    relative_return = (np.roll(data[:, 3], -1 * look_ahead, axis=0) - data[:, 3]) / data[:, 3]
+    condlist = [relative_return > threshold, relative_return < -1 * threshold]
+    choicelist = [1, -1]
+    return np.select(condlist, choicelist).reshape((n, 1))
+
+
+def stop_loss_hit(data, stop_loss=.05, lookahed=3):
+    n = data.shape[0]
+    hl_return = np.divide(np.subtract(np.roll(data[:, [1, 2]], -1 * lookahed, axis=0), data[:, 3].reshape((n, 1))),
+                          data[:, 3].reshape((n, 1)))
+
+    return hl_return
+
+def take_profit_hit(data, lookahead=3):
+    return None
+
+
+
+def get_future_direction(data, stop_loss=.05, profit_target=.05, max_periods=3):
+    n = data.shape[0]
+    hl_0 = data[:, 1:3]
+    hl_123 = ()
+    for i in range(max_periods):
+        hl_123 = hl_123 + (np.roll(hl_0, -1 * (i + 1), axis=0),)
+
+    hl_123 = np.concatenate(hl_123, axis=1)
+    hl_123 = np.divide(np.subtract(hl_123, data[:, 0].reshape(n, 1)),data[:, 0].reshape(n, 1))
+
+
+
+    return hl_123
+
+
+
+
+
+def plot_candlestick(open, high, low, close):
+    data = go.Candlestick(open=open, high=high, low=low, close=close)
+    fig = go.Figure(data=[data])
+    fig.show()
+
+class Pattern:
+    def __init__(self, feature, instance_count, direction_count):
+         self.feature = feature
+         self.instance_count = instance_count
+         self.direction_count = direction_count
+         self.direction = np.argmax(direction_count)
+         self.reliability = np.amax(self.direction_count) / self.instance_count * 100
+
+    def to_string(self):
+          print('feature: ', self.feature, '\ninstance_count: ', self.instance_count, '\ndirection_count: ',
+                self.direction_count, '\ndirection: ', self.direction, '\nreliability: ', self.reliability, ' %')
+
+
+
+
+data = np.arange(20).reshape(5, 4)
+print(data)
+print(stop_loss_hit(data, 1))
+
+
+
+'''
+
+data = load_data('test.csv')
+n_data = normalize_data(data)
+n_data = n_data[0:100, :]
+plot_candlestick(np.ones(n_data.shape[0]), n_data[:, 0], n_data[:, 1], n_data[:, 2])
+model = construct_pattern(data)
+
+
+trend = get_trend(data)
+
+up_model = model[trend[:, 0] == 1]
+down_model = model[trend[:, 0] == -1]
+sideways_model = model[trend[:,0] == 0]
+
+
+direction = get_tradability_status(data)
+up_direction = direction[trend[:, 0] == 1]
+down_direction = direction[trend[:, 0] == -1]
+sideways_direction = direction[trend[:,0] == 0]
+
+n = 10000
+model = up_model[0:n, :]
+direction = up_direction[0:n, ]
+clusters = AgglomerativeClustering(linkage='average').fit(model)
+
+
+
+patterns = []
+
+for x in range(model.shape[0]):
+    if direction[x] == 1 : direction_count = np.array([1, 0, 0])
+    elif direction[x] == -1 : direction_count = np.array([0, 0, 1])
+    else : direction_count = np.array([0, 1, 0])
+
+    patterns.append(Pattern(model[x], 1, direction_count))
+
+for x in clusters.children_:
+    feature = np.average((patterns[x[0]].feature, patterns[x[1]].feature), axis=0)
+    instance_count = patterns[x[0]].instance_count + patterns[x[1]].instance_count
+    direction_count = patterns[x[0]].direction_count + patterns[x[1]].direction_count
+
+    patterns.append(Pattern(feature, instance_count, direction_count))
+
+i = 0
+for p in patterns :
+    print('Node ', i)
+    i += 1
+    p.to_string()
+
+'''
