@@ -3,12 +3,12 @@ import time
 import pandas as pd
 
 
-def binance_klines_fetcher(outputfile, symbol, interval, startTime, endtime):
+def binance_klines_fetcher():
     binance = ccxt.binance()
-    outputfile = 'data/binance_btcusd_1h_v0.csv'
-    step = 3600000 * 1001
+    outputfile = 'binance_btcusd_4h_v0.csv'
+    step = 3600000 * 1001 * 4
     symbol = 'BTCUSDT'
-    interval = '1h'
+    interval = '4h'
     limit = 1000
     startTime = 1502942400000
 
@@ -24,3 +24,4 @@ def binance_klines_fetcher(outputfile, symbol, interval, startTime, endtime):
             i = len(klines)
 
 
+binance_klines_fetcher()

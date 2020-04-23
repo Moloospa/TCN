@@ -4,8 +4,6 @@ import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 
-matplotlib.use('TkAgg')
-
 
 def train_test_instance_scaled_data(data_file, timesteps, test_train_split_point):
     # load data from file

@@ -45,17 +45,17 @@ def DC_CNN_Block(nb_filter, filter_length, dilation, l2_layer_reg):
                            dilation_rate=dilation,
                            activation='linear', padding='causal', use_bias=False,
                            kernel_initializer=TruncatedNormal(mean=0.0, stddev=0.05,
-                                                              seed=42), kernel_regularizer=None)(input_)
+                                                              seed=42), kernel_regularizer=l2(l2_layer_reg))(input_)
 
         layer_out = Activation('selu')(layer_out)
 
         skip_out = Conv1D(1, 1, activation='linear', use_bias=False,
                           kernel_initializer=TruncatedNormal(mean=0.0, stddev=0.05,
-                                                             seed=42), kernel_regularizer=None)(layer_out)
+                                                             seed=42), kernel_regularizer=l2(l2_layer_reg))(layer_out)
 
         network_in = Conv1D(1, 1, activation='linear', use_bias=False,
                             kernel_initializer=TruncatedNormal(mean=0.0, stddev=0.05,
-                                                               seed=42), kernel_regularizer=None)(layer_out)
+                                                               seed=42), kernel_regularizer=l2(l2_layer_reg))(layer_out)
 
         network_out = Add()([residual, network_in])
 
@@ -74,13 +74,17 @@ def DC_CNN_Model(length):
     l5a, l5b = DC_CNN_Block(32, 2, 16, 0.001)(l4a)
     l6a, l6b = DC_CNN_Block(32, 2, 32, 0.001)(l5a)
     l7a, l7b = DC_CNN_Block(32, 2, 64, 0.001)(l6a)
+
     l8a, l8b = DC_CNN_Block(32, 2, 128, 0.001)(l7a)
+    l8b = Dropout(0.3)(l8b)  # dropout used to limit influence of earlier data
     l9a, l9b = DC_CNN_Block(32, 2, 256, 0.001)(l8a)
+    l9b = Dropout(0.8)(l9b)  # dropout used to limit influence of earlier data
     l10a, l10b = DC_CNN_Block(32, 2, 512, 0.001)(l9a)
+    l10b = Dropout(0.8)(l10b)  # dropout used to limit influence of earlier data
     l11a, l11b = DC_CNN_Block(32, 2, 1024, 0.001)(l10a)
-   # l11b = Dropout(0.8)(l11b)  # dropout used to limit influence of earlier data
+    l11b = Dropout(0.8)(l11b)  # dropout used to limit influence of earlier data
     l12a, l12b = DC_CNN_Block(32, 2, 2048, 0.001)(l11a)
-   # l12b = Dropout(0.8)(l12b)  # dropout used to limit influence of earlier data
+    l12b = Dropout(0.8)(l12b)  # dropout used to limit influence of earlier data
 
     l13 = Add()([l1b, l2b, l3b, l4b, l5b, l6b, l7b, l8b, l9b, l10b, l11b, l12b])
 
@@ -91,7 +95,7 @@ def DC_CNN_Model(length):
 
     model = Model(input, output)
 
-    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None,
+    adam = optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=None,
                            decay=0.0, amsgrad=False)
 
     model.compile(loss='mse', optimizer=adam, metrics=['mae', 'mape'])
